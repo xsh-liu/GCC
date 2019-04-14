@@ -94,19 +94,30 @@ rmse_tree <- RMSE(as.numeric(testPred), as.numeric(y_hat_tree))
 cm_tree
 rmse_tree
 
+#Ensemble the models based on consensus method and test whether is outcome is improved. 
+ensemFrame <- data.frame("rpart" = as.numeric(as.character(y_hat_tree)),
+                         "randomForest" = as.numeric(as.character(y_hat_rf)),
+                         "rborist" = as.numeric(as.character(y_hat_rborist)))
+pred_ensem <- rowSums(ensemFrame)/3
+y_hat_ensem <- ifelse(pred_ensem >= 0.3, yes = 1, no = 0)
+cm_ensem <- confusionMatrix(as.factor(y_hat_ensem), as.factor(testPred))
+rmse_ensem <- RMSE(as.numeric(testPred), as.numeric(y_hat_ensem))
+cm_ensem
+rmse_ensem
+
 #Validating all the valid models with the validation set for the final evaluation. 
 ##Create data frame for predictors and actual values. 
 valiPredictors <- validation[, -2]
 valiPred <- validation[,2]
 
-
-#Logistics
-pred_glm_vali <- predict(fit_glm, validation) 
-y_hat_glm_vali <- ifelse(pred_glm_vali >= 0.5,yes =  1, no = 0) 
-cm_glm_vali <- confusionMatrix(as.factor(y_hat_glm_vali), as.factor(valiPred))
-rmse_glm_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_glm_vali))
-
 #Random Forest
+pred_rf_vali <- predict(fit_rf, valiPredictors)
+y_hat_rf_vali <- as.factor(levels(pred)[predict(fit_rf, valiPredictors)$yPred])
+valiPred <- as.factor(valiPred)
+cm_rf_vali <- confusionMatrix(y_hat_rf_vali, valiPred)
+rmse_rf_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_rf_vali))
+
+#Rborist
 pred_rborist_vali <- predict(fit_rborist, valiPredictors)
 y_hat_rborist_vali <- as.factor(levels(pred)[predict(fit_rborist, valiPredictors)$yPred])
 valiPred <- as.factor(valiPred)
@@ -119,18 +130,38 @@ y_hat_tree_vali <- as.factor(pred_tree_vali)
 cm_tree_vali <- confusionMatrix(y_hat_tree_vali, as.factor(valiPred))
 rmse_tree_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_tree_vali))
 
+#Ensemble
+ensemFrame_vali <- data.frame("rpart" = y_hat_tree_vali,
+                         "randomForest" = y_hat_rf_vali,
+                         "rborist" = y_hat_rborist_vali)
+pred_ensem_vali <- (y_hat_tree_vali + y_hat_rf_vali + y_hat_rborist_vali)/3 
+y_hat_ensem _vali<- ifelse(pred_ensem_vali >= 0.3, yes = 1, no = 0)
+cm_ensem_vali <- confusionMatrix(y_hat_ensem_vali, as.factor(valiPred))
+rmse_ensem_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_ensem_vali))
+cm_ensem_vali
+rmse_ensem_vali
+
+
 #Check the sensitivity and RMSE of results.
-names <- c("glm", "Rborist", "rpart")
+names <- c("RandomForest","Rborist", "Rpart", "ensembled")
 
-sensitivities <- c(cm_glm_vali$byClass["Sensitivity"], 
+sensitivities <- c(cm_rf_vali$byClass["Sensitivity"],
                    cm_rborist_vali$byClass["Sensitivity"],
-                   cm_tree_vali$byClass["Sensitivity"])
+                   cm_tree_vali$byClass["Sensitivity"],
+                   cm_ensem_vali$byClass["Sensitivity"])
 
-rmses <- c(rmse_glm_vali,
+accuracies <- c(cm_rf_vali$overall["Accuracy"],
+                cm_rborist_vali$overall["Accuracy"],
+                cm_tree_vali$overall["Accuracy"],
+                cm_ensem_vali$overall["Accuracy"])
+
+rmses <- c(rmse_rf_vali,
            rmse_rborist_vali,
-           rmse_tree_vali)
+           rmse_tree_vali,
+           rmse_emsem_vali)
 
 result <- data.frame("Name" = names,
+                     "Accuracy" = accuracies,
                      "Sensitivity" = sensitivities,
                      "RMSE" = rmses)
 result

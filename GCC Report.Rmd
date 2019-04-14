@@ -17,14 +17,17 @@ GCC is a project that poses a real-world business problem, how does a media comp
 
 One particular problem facing GCC is how to boost the customer response rate to renewal offers that it mails to its magazine subscribers. The industry response rate is about 2%, but GCC has historically performed better than that. However, GCC must update its model to correspond to recent changes. GCC's director of database marketing, Chris Grey, wants to make sure GCC maintains its place as one of the top achievers in targeted marketing. Play the role of Chris Grey and construct a classification model to identify customers who are likely to respond to a mailing."
 
-As we can read, the goal of this project is to predict whether a customer is to renew his or her subscription or not. In this project, I mainly use the three models focused from the courses, logistic regression, k nearest neighbors, and classification tree (Rborist, Random Forest, and Rpart package). A principal component analysis is also done to test the feasibility of using less predictors to generate similar and high accuracy. 
+As we can read, the goal of this project is to predict whether a customer is to renew his or her subscription or not. In this project, I mainly use the three models focused from the courses, logistic regression, k nearest neighbors, classification tree (Rborist, RadomForest, and Rpart package), and an ensembled model. A principal component analysis is also done to test the feasibility of using less predictors to generate similar and high accuracy. 
+
+Please note that due to my own misunderstanding of the terms, I used the "test" set to validate the trained models and the "validation" set to conduct the final test. This can be confusing for those of you who adapted the terms correctly. I found this issue upon completion of the project and decided not to fix it for time's sake.  
 
 For all the codes and files, please visit the following Github page:
 
 
+
 II. Preparing the Data Set
 
-The dataset is provided in a .xlsx file. The first sheet lists descriptions of all variables and the second sheet contains all the data. I read through all the descriptions to become familiar with the general overview of the set. The set covers quite a wide range of information on GCC's subscribers. For the ease of reading the data, I converted the .xlsx file to .csv file. The file is imported into R as a data frame. 
+The dataset is provided in a .xlsx file. The first sheet lists descriptions of all variables and the second sheet contains all the data. I have read through all the descriptions to become familiar with the general overview of the set. The set covers quite a wide range of information on GCC's subscribers. For the ease of reading the data, I converted the .xlsx file to .csv file. The file is imported into R as a data frame. 
 
 First, load all the packages needed. 
 ```{r}
@@ -44,7 +47,7 @@ I use the following code to view the dataset.
 ```{r}
 head(gcc)
 ```
-Since the goal is to predict renewing customers, I want to see the overall renewal rate. 
+Since the goal is to predict renewing customers, I want to see the overall renewal rate to understand the prevelence. 
 
 ```{r}
 mean(gcc$Renewal)
@@ -97,7 +100,7 @@ gcc$GiftDonor <- NULL
 After cleaning up the data, partitions can be created. 
 ```{r}
 renewal <- gcc[,2]
-valiIndex <- createDataPartition(renewal, p = 0.5, times = 1, list = FALSE)
+valiIndex <- createDataPartition(renewal, p = 0.2, times = 1, list = FALSE)
 validation <- gcc[valiIndex,]
 gccModelData <- gcc[-valiIndex,]
 
@@ -138,15 +141,23 @@ pcaTest <- prcomp(testPredictors, center = FALSE, scale. = FALSE)
 summary(pca)
 ```
 
-The PCA result is telling me that the first two PCA variables can capture 100% of variablilities of the data set. This is quite suspicious. I conducted further testing into the feasibility of using PCA for this set, and the feedback is negative (view the entire process through Github page's PCA.R file). Therefore, I will be using the original data set for predictive models. 
+The PCA result is telling me that the first two PCA variables can capture 100% of variablilities of the data set. This is quite suspicious. I conducted further testing into the feasibility of using PCA for this set, and the feedback wass negative (view the entire process through Github page's PCA.R file). Therefore, I will be using the original data set for predictive models. 
 
 IV. Modeling 
+As stated in the case text, I am supposed to construct a classification model for the predictions. From my college professor, I have been informed that logistic regression, knn, and tree are most widely used in business analytics. Therefore, I am applying the three types of models to the data set to see the outcome. In the next section, I will ensemble the models to see whether the outcome can be improved. 
 
-1. Logistic Regression 
+Also, with basic marketing understanding, I am assuming that the cost of sending a renewing mail to a not-likely-renewing person is lower than the loss of missing out a likely-renewing person. Therefore, I would also focus on specificity (pred&ref = 1 / (pred&ref=1+pred=0&ref=1)) along with the overall accuracy from confusion matrix results.   
+
+1. Logistic Regression
+
+The optimal cut-off value is found at 0.5 after testing. The goal is to again avoid missing out likely-renewing customers. 
+
 ```{r}
 #logistic regression
 fit_glm <- glm(Renewal ~., data = train, family = "binomial")
 pred_glm <- predict(fit_glm, test) 
+
+
 y_hat_glm <- ifelse(pred_glm >= 0.5,yes =  1, no = 0) 
 
 cm_glm <- confusionMatrix(as.factor(y_hat_glm), as.factor(testPred))
@@ -154,12 +165,12 @@ rmse_glm <- RMSE(as.numeric(testPred), as.numeric(y_hat_glm))
 cm_glm
 rmse_glm
 ```
-
+From the results, we can see that accuracy, sensitivity, and rmse are all seemingly great. However, looking at the reference table, we can see that the model does a bad job predicting people who are likely to renew. There is only one prediction that correctly identifies an actual renewing customer. The good ratios are likely due to the 2% prevelence of renewing customers. The accuracy from this model is lower than blindly guessing that no one will renew. After all, this is not a valid and working method to solve the case problem. The warning message also gives me an impression that this model would not work very well.  
 
 
 2. K Nearest Neighbors 
 
-I use the following codes to run the model. To save time from long processing sessions, I adopt the control method used by Dr. Irizarry. The upper limit of predictors is 45, a subjective number that I have chosen for a balance between coverage and over fitting. 
+I use the following codes to run the model. To save time from long processing sessions, I adopt the control method used by Dr. Irizarry. 
 
 ```{r}
 control <- trainControl(method = "cv", number = 5, p = .9)
@@ -180,11 +191,11 @@ cm_knn
 rmse_knn
 ```
 
-As The accuracy seems great at over 98%, and the RMSE is reasonable. However, this is only part of the story. Looking at the confusion matrix results, the algorithm predicted no renewal. The model is then obsolete because the goal of this case is to predict the customers that are more likely to renew so the company can better utilize its marketing campaign. The root of this problem may come from the very low prevelance of renewing customers - only 2%, as found in the first section. The algorithm simply predicts that no one will renew to gain the highest accuracy. This is an indicator that knn does not provide valid solution to this data set.  
+As The accuracy seems great at over 98%, and the RMSE is reasonable. However, this is only part of the story. Looking at the confusion matrix results, the algorithm predicted no renewal. The model is then obsolete because the goal of this case is to predict the customers that are more likely to renew so the company can better utilize its marketing campaign. The root of this problem may come from the very low prevelance of renewing customers - only 2%, as found in the first section. The algorithm simply predicts that no one will renew to gain the highest accuracy - highly similar to the glm model. This is an indicator that knn does not provide valid solution to this data set.  
 
 3. Regression Tree
 
-I first used the "randomForest" package to run the training. 
+I first used the "RandomForest" package to run the training with five-fold cross validation. 
 
 ```{r}
 library(randomForest)
@@ -201,7 +212,7 @@ train_rf$bestTune
 fit_rf <- randomForest(predictors, pred, 
                        minNode = train_rf$bestTune$minNode,
                        predFixed = train_rf$bestTune$predFixed)
-pred_rf <- predict(fit_rf, testPredictors)
+pred_rf <- predict(fit_rf, testPredictors, type = "class")
 y_hat_rf <- as.factor(pred_rf)
 testPred <- as.factor(testPred)
 cm_rf <- confusionMatrix(y_hat_rf, testPred)
@@ -211,8 +222,9 @@ rmse_rf
 imp_rf <- importance(fit_rf)
 imp_rf
 ```
+This model is having a similar issue which it misses many renewing customers. One great featuer about the RandomForest package is its "importance" function which gives a list of important predictors in the model. The higher the "MeanDecreaseGini", the more effective or useful the predictor is. We can see the most important variable in this case is "DollarPerIssue", which marks that the customers are quite price elastic to the renewal. "MonthsSinceExpire" is the second important - the higher the number, the less likely that a customer will come back and resubcribe. We can also see that income plays an important role, too. 
 
-To find the optimal method of running the random forest model, I tried using the Rborist package, too. 
+To see if the other packages provide better outcomes for the random forest method, I am using the Rborist package with five-fold cross validation, too. The tune grid method is adopted from the lecture. 
 
 ```{r}
 #The Rborist codes 
@@ -238,7 +250,7 @@ rmse_rborist <- RMSE(as.numeric(testPred), as.numeric(y_hat_rborist))
 cm_rborist
 rmse_rborist
 ```
-From the outcome, we could see that the method actually worked. 
+From the table, we can see an improvement from the previous model. However, there are still more renewing customers who get dismissed than those who are correctly predicted. 
 
 Last, I want to test the data set on "rpart" function. 
 ```{r}
@@ -252,21 +264,39 @@ rmse_tree <- RMSE(as.numeric(testPred), as.numeric(y_hat_tree))
 cm_tree
 rmse_tree
 ```
+It seems like even without training, the outcome from rpart is better than the other models. There are definitely less renewing customers who are missed out by the model. I want to ensemble the three tree models to see whether the outcome can be improved. Since I don't want to miss any renewing customer and wouldn't mind spending a little more on sending non-renewing customers mails, the cut-off rate here is 0.3, which means that as long as one model predicts that a person is to renew, the ensembled model will consider the person as a renewing customer. 
+
+```{r}
+#Ensemble the models based on consensus method and test whether is outcome is improved. 
+ensemFrame <- data.frame("rpart" = as.numeric(as.character(y_hat_tree)),
+                         "randomForest" = as.numeric(as.character(y_hat_rf)),
+                         "rborist" = as.numeric(as.character(y_hat_rborist)))
+pred_ensem <- rowSums(ensemFrame)/3
+y_hat_ensem <- ifelse(pred_ensem >= 0.3, yes = 1, no = 0)
+cm_ensem <- confusionMatrix(as.factor(y_hat_ensem), as.factor(testPred))
+rmse_ensem <- RMSE(as.numeric(testPred), as.numeric(y_hat_ensem))
+cm_ensem
+rmse_ensem
+```
+We can see that while the other metrics are slightly worse, we are getting more correct (1,1) results due to the ensembling process. 
+
 V. Final Test
+Finally, I want to test all the models with the validation set. 
+
 ```{r}
 #Validating all the valid models with the validation set for the final evaluation. 
 ##Create data frame for predictors and actual values. 
 valiPredictors <- validation[, -2]
 valiPred <- validation[,2]
 
-
-#Logistics
-pred_glm_vali <- predict(fit_glm, validation) 
-y_hat_glm_vali <- ifelse(pred_glm_vali >= 0.5,yes =  1, no = 0) 
-cm_glm_vali <- confusionMatrix(as.factor(y_hat_glm_vali), as.factor(valiPred))
-rmse_glm_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_glm_vali))
-
 #Random Forest
+pred_rf_vali <- predict(fit_rf, valiPredictors, type = "class")
+y_hat_rf_vali <- as.factor(pred_rf_vali)
+valiPred <- as.factor(valiPred)
+cm_rf_vali <- confusionMatrix(y_hat_rf_vali, valiPred)
+rmse_rf_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_rf_vali))
+
+#Rborist
 pred_rborist_vali <- predict(fit_rborist, valiPredictors)
 y_hat_rborist_vali <- as.factor(levels(pred)[predict(fit_rborist, valiPredictors)$yPred])
 valiPred <- as.factor(valiPred)
@@ -279,25 +309,53 @@ y_hat_tree_vali <- as.factor(pred_tree_vali)
 cm_tree_vali <- confusionMatrix(y_hat_tree_vali, as.factor(valiPred))
 rmse_tree_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_tree_vali))
 
+#Ensemble
+ensemFrame_vali <- data.frame("rpart" = as.numeric(as.character(y_hat_tree_vali)),
+                         "randomForest" = as.numeric(as.character(y_hat_rf_vali)),
+                         "rborist" = as.numeric(as.character(y_hat_rborist_vali)))
+pred_ensem_vali <- rowSums(ensemFrame_vali)/3
+y_hat_ensem_vali <- ifelse(pred_ensem_vali >= 0.3, yes = 1, no = 0)
+cm_ensem_vali <- confusionMatrix(as.factor(y_hat_ensem_vali), as.factor(valiPred))
+rmse_ensem_vali<- RMSE(as.numeric(valiPred), as.numeric(y_hat_ensem_vali))
+cm_ensem_vali
+rmse_ensem_vali
+
 #Check the sensitivity and RMSE of results.
-names <- c("glm", "Rborist", "rpart")
+names <- c("RandomForest","Rborist", "Rpart", "ensembled")
 
-sensitivities <- c(cm_glm_vali$byClass["Sensitivity"], 
+sensitivities <- c(cm_rf_vali$byClass["Sensitivity"],
                    cm_rborist_vali$byClass["Sensitivity"],
-                   cm_tree_vali$byClass["Sensitivity"])
+                   cm_tree_vali$byClass["Sensitivity"],
+                   cm_ensem_vali$byClass["Sensitivity"])
 
-rmses <- c(rmse_glm_vali,
+accuracies <- c(cm_rf_vali$overall["Accuracy"],
+                cm_rborist_vali$overall["Accuracy"],
+                cm_tree_vali$overall["Accuracy"],
+                cm_ensem_vali$overall["Accuracy"])
+
+rmses <- c(rmse_rf_vali,
            rmse_rborist_vali,
-           rmse_tree_vali)
+           rmse_tree_vali,
+           rmse_ensem_vali)
 
 result <- data.frame("Name" = names,
+                     "Accuracy" = accuracies,
                      "Sensitivity" = sensitivities,
                      "RMSE" = rmses)
 result
+
+#Check the reference tables. 
+cm_rf_vali$table
+cm_rborist_vali$table
+cm_tree_vali$table
+cm_ensem_vali$table
+
 ```
 
+We can see that while the rpart model provides the best overall results, the ensembled model provides the highest possibility of catching a customer who is likely to renew. The decision of the model really depends on whether one favors overall accuracy or finding renewing subscribers. Personally, I am more in favor of the ensembled model. However, as GCC also wants to maintain its leading position in response rate, it may want to use the rpart model. 
 
-V. Results
+V. Conclusion 
+Working on this case s very beneficial to me as this is my first time using R to solve business analytics problems. As for improvement, I believe that by giving the training process more time, the model outcomes could have been better. At the same time, it could be possible to prune the rpart tree which can make it further fit my personal preference of finding more renewing customers. To my fellow graders, I would love to see your feedback on this project to help me learn more!
 
 
 

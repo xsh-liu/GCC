@@ -46,7 +46,7 @@ gcc$GiftDonor <- NULL
 
 #Create train, test, and validation sets
 renewal <- gcc[,2]
-valiIndex <- createDataPartition(renewal, p = 0.5, times = 1, list = FALSE)
+valiIndex <- createDataPartition(renewal, p = 0.2, times = 1, list = FALSE)
 validation <- gcc[valiIndex,]
 gccModelData <- gcc[-valiIndex,]
 
