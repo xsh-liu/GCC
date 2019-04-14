@@ -1,0 +1,315 @@
+---
+title: "GCC Project Report"
+author: "Xiaoshuo Liu"
+date: "April 8, 2019"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+I. Introduction
+
+I want to apply the skills from this course to business analytics. Therefore, I have chosen a case that applies to the business field. 
+
+GCC is a project that poses a real-world business problem, how does a media company improve its magazine renewal rate? I found this case on a business analytics textbook named, Essentials of Business Analytics. Here is the original text of the case:
+
+"Grey Code Corporation (GCC) is a media and marketing company involved in magazine and book publishing and in television broadcasting... GCC's relational database contains over a terabyte of data encompassing 75 million customers. GCC uses the data in its database to develop campaigns for new customer acquisition, customer reactivation, and the identification of cross-selling opportunities for products.For example, GCC will generate separate versions of a monthly issue of a magazine that will differ only by the advertisements they contain. They will mail a subscribing customer the version with the print ads identified by their database as being of most interest to that customer.
+
+One particular problem facing GCC is how to boost the customer response rate to renewal offers that it mails to its magazine subscribers. The industry response rate is about 2%, but GCC has historically performed better than that. However, GCC must update its model to correspond to recent changes. GCC's director of database marketing, Chris Grey, wants to make sure GCC maintains its place as one of the top achievers in targeted marketing. Play the role of Chris Grey and construct a classification model to identify customers who are likely to respond to a mailing."
+
+As we can read, the goal of this project is to predict whether a customer is to renew his or her subscription or not. In this project, I mainly use the three models focused from the courses, logistic regression, k nearest neighbors, and classification tree (Rborist, Random Forest, and Rpart package). A principal component analysis is also done to test the feasibility of using less predictors to generate similar and high accuracy. 
+
+For all the codes and files, please visit the following Github page:
+
+
+II. Preparing the Data Set
+
+The dataset is provided in a .xlsx file. The first sheet lists descriptions of all variables and the second sheet contains all the data. I read through all the descriptions to become familiar with the general overview of the set. The set covers quite a wide range of information on GCC's subscribers. For the ease of reading the data, I converted the .xlsx file to .csv file. The file is imported into R as a data frame. 
+
+First, load all the packages needed. 
+```{r}
+library(tidyverse)
+library(purrr)
+library(caret)
+library(mlr)
+```
+
+
+```{r}
+gcc <- read.csv("GCC.csv")
+```
+
+
+I use the following code to view the dataset. 
+```{r}
+head(gcc)
+```
+Since the goal is to predict renewing customers, I want to see the overall renewal rate. 
+
+```{r}
+mean(gcc$Renewal)
+```
+The rate is ~2%. 
+
+We can see that there are 38 total columns. Some of the colunms have character-based indications. I need to transform into dummy variables for further analysis. But before doing so, I want to check if there are NA values in the set that could cause malfunctions to our modeling functions. 
+```{r}
+any(is.na.data.frame(gcc))
+```
+From the result, I can see that there are indeed NA values across the data frame. Thus, I want to remove them. 
+```{r}
+gcc <- na.omit(gcc)
+```
+Now, I am going to transform the character values into dummy variables. I will my using the "createDummyFeature" function from the "mlr" package. 
+
+```{r}
+chaCol <- c("DwellingType", "Gender", "Marital", "ChildPresent", "Occupation","MagazineStatus","LastPaymentType","GiftDonor")
+gcc <- createDummyFeatures(gcc, cols = chaCol)
+```
+
+Let's examine the new data frame. 
+
+```{r}
+head(gcc)
+```
+We can see that for each character-based variable, the "createDummyFeature" function created a dummy variable for all the values, which makes "dummy trap" likely to happen later in creating models. Therefore, I have removed one dummy from each set of dummy variables. The original character-based variables have also been removed for the slimness of the data.
+
+```{r}
+gcc$DwellingType.U <- NULL
+gcc$Gender.U <- NULL
+gcc$Marital.U <- NULL
+gcc$ChildPresent.U <- NULL
+gcc$Occupation.U <- NULL
+gcc$MagazineStatus.S <- NULL
+gcc$LastPaymentType.0 <- NULL
+gcc$GiftDonor.N <- NULL
+
+gcc$DwellingType <- NULL
+gcc$Gender <- NULL
+gcc$Marital <- NULL
+gcc$ChildPresent <- NULL
+gcc$Occupation <- NULL
+gcc$MagazineStatus <- NULL
+gcc$LastPaymentType <- NULL
+gcc$GiftDonor <- NULL
+```
+
+
+After cleaning up the data, partitions can be created. 
+```{r}
+renewal <- gcc[,2]
+valiIndex <- createDataPartition(renewal, p = 0.5, times = 1, list = FALSE)
+validation <- gcc[valiIndex,]
+gccModelData <- gcc[-valiIndex,]
+
+renewalTest <- gccModelData[,2]
+testIndex <- createDataPartition(renewalTest, p = 0.4, times = 1, list = FALSE)
+train <- gccModelData[-testIndex,]
+test <- gccModelData[testIndex,]
+```
+
+The objects used above are removed once the process is over. 
+```{r}
+rm(renewal)
+rm(renewalTest)
+rm(valiIndex)
+rm(testIndex)
+rm(gcc)
+rm(gccModelData)
+rm(chaCol)
+```
+
+
+Next, data frames of actual values and predictors are created. 
+```{r}
+predictors <- train[,-2]
+pred <- train[,2]
+
+testPredictors <- test[, -2]
+testPred <- test[,2]
+```
+
+III. Principal Component Analysis
+
+From the last section, I can see that there are 68 predictors that can be used. I consider this as too many, so I use PCA to see the possibility of shrinking down the number. 
+```{r}
+pca <- prcomp(predictors, center = FALSE, scale. = FALSE)
+pcaTest <- prcomp(testPredictors, center = FALSE, scale. = FALSE)
+
+summary(pca)
+```
+
+The PCA result is telling me that the first two PCA variables can capture 100% of variablilities of the data set. This is quite suspicious. I conducted further testing into the feasibility of using PCA for this set, and the feedback is negative (view the entire process through Github page's PCA.R file). Therefore, I will be using the original data set for predictive models. 
+
+IV. Modeling 
+
+1. Logistic Regression 
+```{r}
+#logistic regression
+fit_glm <- glm(Renewal ~., data = train, family = "binomial")
+pred_glm <- predict(fit_glm, test) 
+y_hat_glm <- ifelse(pred_glm >= 0.5,yes =  1, no = 0) 
+
+cm_glm <- confusionMatrix(as.factor(y_hat_glm), as.factor(testPred))
+rmse_glm <- RMSE(as.numeric(testPred), as.numeric(y_hat_glm))
+cm_glm
+rmse_glm
+```
+
+
+
+2. K Nearest Neighbors 
+
+I use the following codes to run the model. To save time from long processing sessions, I adopt the control method used by Dr. Irizarry. The upper limit of predictors is 45, a subjective number that I have chosen for a balance between coverage and over fitting. 
+
+```{r}
+control <- trainControl(method = "cv", number = 5, p = .9)
+pred <- as.factor(pred)
+train_knn <- caret::train(predictors, pred,
+                   method = "knn",
+                   tuneGrid = data.frame(k = seq(10:30)),
+                   trControl = control)
+train_knn$bestTune
+pred <- as.factor(pred)
+fit_knn <- knn3(predictors, pred, k = train_knn$bestTune)
+y_hat_knn <- predict(fit_knn,
+                     testPredictors,
+                     type = "class")
+cm_knn <- confusionMatrix(y_hat_knn, factor(testPred))
+rmse_knn <- RMSE(as.numeric(testPred), as.numeric(y_hat_knn))
+cm_knn
+rmse_knn
+```
+
+As The accuracy seems great at over 98%, and the RMSE is reasonable. However, this is only part of the story. Looking at the confusion matrix results, the algorithm predicted no renewal. The model is then obsolete because the goal of this case is to predict the customers that are more likely to renew so the company can better utilize its marketing campaign. The root of this problem may come from the very low prevelance of renewing customers - only 2%, as found in the first section. The algorithm simply predicts that no one will renew to gain the highest accuracy. This is an indicator that knn does not provide valid solution to this data set.  
+
+3. Regression Tree
+
+I first used the "randomForest" package to run the training. 
+
+```{r}
+library(randomForest)
+control <- trainControl(method = "cv", number = 5, p = 0.9)
+grid <- expand.grid(mtry = 10)
+pred <- as.factor(pred)
+train_rf <- caret::train(predictors,
+                         pred,
+                         method = "cforest",
+                         trControl = control,
+                         tuneGrid = grid)
+train_rf$bestTune
+
+fit_rf <- randomForest(predictors, pred, 
+                       minNode = train_rf$bestTune$minNode,
+                       predFixed = train_rf$bestTune$predFixed)
+pred_rf <- predict(fit_rf, testPredictors)
+y_hat_rf <- as.factor(pred_rf)
+testPred <- as.factor(testPred)
+cm_rf <- confusionMatrix(y_hat_rf, testPred)
+rmse_rf <- RMSE(as.numeric(testPred), as.numeric(y_hat_rf))
+cm_rf
+rmse_rf
+imp_rf <- importance(fit_rf)
+imp_rf
+```
+
+To find the optimal method of running the random forest model, I tried using the Rborist package, too. 
+
+```{r}
+#The Rborist codes 
+library(Rborist)
+control <- trainControl(method = "cv", number = 5, p = 0.9)
+grid <- expand.grid(minNode = c(2,5), predFixed = c(15,20,25,30,35))
+pred <- as.factor(pred)
+train_rborist <- caret::train(predictors,
+                         pred,
+                         method = "Rborist",
+                         trControl = control,
+                         tuneGrid = grid)
+train_rborist$bestTune
+
+fit_rborist <- Rborist(predictors, pred, 
+                  minNode = train_rborist$bestTune$minNode,
+                  predFixed = train_rborist$bestTune$predFixed)
+pred_rborist <- predict(fit_rborist, testPredictors)
+y_hat_rborist <- as.factor(levels(pred)[predict(fit_rborist, testPredictors)$yPred])
+testPred <- as.factor(testPred)
+cm_rborist <- confusionMatrix(y_hat_rborist, testPred)
+rmse_rborist <- RMSE(as.numeric(testPred), as.numeric(y_hat_rborist))
+cm_rborist
+rmse_rborist
+```
+From the outcome, we could see that the method actually worked. 
+
+Last, I want to test the data set on "rpart" function. 
+```{r}
+library(rpart)
+fit_tree <- rpart(Renewal ~., data = train, method = "class")
+pred_tree <- predict(fit_tree, test, type = "class")
+y_hat_tree <- as.factor(pred_tree)
+cm_tree <- confusionMatrix(y_hat_tree, as.factor(testPred))
+cm_tree$overall["Accuracy"]
+rmse_tree <- RMSE(as.numeric(testPred), as.numeric(y_hat_tree))
+cm_tree
+rmse_tree
+```
+V. Final Test
+```{r}
+#Validating all the valid models with the validation set for the final evaluation. 
+##Create data frame for predictors and actual values. 
+valiPredictors <- validation[, -2]
+valiPred <- validation[,2]
+
+
+#Logistics
+pred_glm_vali <- predict(fit_glm, validation) 
+y_hat_glm_vali <- ifelse(pred_glm_vali >= 0.5,yes =  1, no = 0) 
+cm_glm_vali <- confusionMatrix(as.factor(y_hat_glm_vali), as.factor(valiPred))
+rmse_glm_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_glm_vali))
+
+#Random Forest
+pred_rborist_vali <- predict(fit_rborist, valiPredictors)
+y_hat_rborist_vali <- as.factor(levels(pred)[predict(fit_rborist, valiPredictors)$yPred])
+valiPred <- as.factor(valiPred)
+cm_rborist_vali <- confusionMatrix(y_hat_rborist_vali, valiPred)
+rmse_rborist_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_rborist_vali))
+
+#Rpart
+pred_tree_vali <- predict(fit_tree, validation, type = "class")
+y_hat_tree_vali <- as.factor(pred_tree_vali)
+cm_tree_vali <- confusionMatrix(y_hat_tree_vali, as.factor(valiPred))
+rmse_tree_vali <- RMSE(as.numeric(valiPred), as.numeric(y_hat_tree_vali))
+
+#Check the sensitivity and RMSE of results.
+names <- c("glm", "Rborist", "rpart")
+
+sensitivities <- c(cm_glm_vali$byClass["Sensitivity"], 
+                   cm_rborist_vali$byClass["Sensitivity"],
+                   cm_tree_vali$byClass["Sensitivity"])
+
+rmses <- c(rmse_glm_vali,
+           rmse_rborist_vali,
+           rmse_tree_vali)
+
+result <- data.frame("Name" = names,
+                     "Sensitivity" = sensitivities,
+                     "RMSE" = rmses)
+result
+```
+
+
+V. Results
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
